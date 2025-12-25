@@ -12,10 +12,10 @@ from firebase.db import save_log
 
 app = FastAPI(title="AutoPilot-X AI Brain")
 
-# ✅ CORS CONFIG (THIS FIXES YOUR ISSUE)
+# ✅ CORS CONFIG (for browser + demo)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # for hackathon/demo
+    allow_origins=["*"],  # Hackathon-safe
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,34 +28,42 @@ rule_engine = RuleWeave()
 priority_engine = PriorityFlux()
 auto_trigger = AutoTrigger()
 
+
 class InputData(BaseModel):
     cpu_usage: int
+
 
 @app.post("/simulate")
 def simulate(data: InputData):
     cpu = data.cpu_usage
 
+    # Step 1: Temporal validation
     time_valid = chrono.evaluate(cpu > 80)
 
-    score = signal_score.calculate(
+    # Step 2: Signal scoring (returns dict)
+    score_data = signal_score.calculate(
         severity=cpu,
         frequency=2,
         duration=3
     )
 
-    decision = rule_engine.decide(score, time_valid)
+    score_value = score_data["score"]
 
-    if decision:
+    # Step 3: Rule evaluation (returns dict)
+    decision_data = rule_engine.decide(score_value, time_valid)
+
+    # Step 4: Decision handling
+    if decision_data["decision"]:
         actions = [
             {"name": "Send Alert", "priority": 3},
             {"name": "Scale Resources", "priority": 5}
         ]
 
         chosen = priority_engine.resolve(actions)
-        result = auto_trigger.execute(chosen["name"])
+        action_result = auto_trigger.execute(chosen["name"])
 
         log = generate_log(
-            f"CPU {cpu}% exceeded threshold. Score={score}"
+            f"CPU {cpu}% exceeded threshold. Score={score_value}"
         )
 
         save_log(log)
@@ -63,12 +71,18 @@ def simulate(data: InputData):
         return {
             "status": "TRIGGERED",
             "decision": chosen["name"],
-            "score": score,
+            "score": score_value,
+            "signal_analysis": score_data,
+            "rule_analysis": decision_data,
+            "action": action_result,
             "log": log
         }
 
+    # Monitoring state
     return {
         "status": "MONITORING",
         "cpu": cpu,
-        "score": score
+        "score": score_value,
+        "signal_analysis": score_data,
+        "rule_analysis": decision_data
     }
