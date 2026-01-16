@@ -1,3 +1,6 @@
+firebase-admin
 fastapi
 uvicorn
-firebase-admin
+pydantic
+psutil
+requests
