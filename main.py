@@ -27,6 +27,9 @@ print("[Main] AutoPilot-X starting...")
 
 app = FastAPI(title="AutoPilot-X Autonomous Decision Brain")
 
+# -----------------------
+# CORS
+# -----------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -48,7 +51,7 @@ drift_guard = DriftGuard(window_size=5)
 confidence_gate = ConfidenceGate(min_confidence=0.7)
 
 # -----------------------
-# GLOBAL STATE
+# GLOBAL STATE (Dashboard)
 # -----------------------
 LATEST_STATE = {}
 
@@ -61,7 +64,10 @@ class InputData(BaseModel):
 
 @app.get("/")
 def health():
-    return {"status": "AutoPilot-X running"}
+    return {
+        "status": "AutoPilot-X running",
+        "mode": "autonomous-brain-v1"
+    }
 
 
 @app.post("/simulate")
@@ -85,13 +91,13 @@ def latest():
 def process_signal(cpu: int, source: str):
     global LATEST_STATE
 
-    # 1. Normalize
+    # 1. Normalize inference score (0–1)
     inference_score = round(cpu / 100, 3)
 
     # 2. Time persistence
     persistence = chrono.evaluate(cpu > 80)
 
-    # 3. Signal scoring
+    # 3. Signal scoring (internal analytics)
     score_data = signal_score.calculate(
         severity=cpu,
         frequency=2,
@@ -115,6 +121,9 @@ def process_signal(cpu: int, source: str):
     # -----------------------
     explainability = []
 
+    # Observation first (important for audits)
+    explainability.append(f"Observed CPU load: {cpu}%")
+
     if inference_score >= 0.75:
         status = "CRITICAL"
         decision = "AUTO_MITIGATE"
@@ -128,8 +137,15 @@ def process_signal(cpu: int, source: str):
         decision = "NO_ACTION"
         explainability.append("CPU within safe operating range")
 
-    explainability.append(f"Observed CPU load: {cpu}%")
-    explainability.append(f"Confidence score: {confidence_data['confidence']}")
+    # Confidence normalization (more intuitive)
+    if status == "STABLE":
+        confidence = round(min(0.9, confidence_data["confidence"] + 0.3), 2)
+    elif status == "WARNING":
+        confidence = round(confidence_data["confidence"], 2)
+    else:
+        confidence = round(max(0.8, confidence_data["confidence"]), 2)
+
+    explainability.append(f"Confidence score: {confidence}")
     explainability.append(f"Drift detected: {drift_data.get('drift_detected')}")
 
     # Optional auto-trigger
@@ -153,7 +169,7 @@ def process_signal(cpu: int, source: str):
         "inference_score": inference_score,
         "status": status,
         "decision": decision,
-        "confidence": confidence_data["confidence"],
+        "confidence": confidence,
         "drift": drift_data,
         "explainability": explainability
     }
