@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+from datetime import datetime
 
 from brain.chronosense import ChronoSense
 from brain.signalscore import SignalScore
@@ -10,11 +11,10 @@ from brain.priorityflux import PriorityFlux
 from brain.autotrigger import AutoTrigger
 from brain.explainlog import generate_log
 
-# Intelligence layers
 from brain.driftguard import DriftGuard
 from brain.confidencegate import ConfidenceGate
 
-# Firebase (optional, safe for cloud)
+# Firebase (optional)
 try:
     from firebase.db import save_log
     FIREBASE_ENABLED = True
@@ -27,7 +27,6 @@ print("[Main] AutoPilot-X starting...")
 
 app = FastAPI(title="AutoPilot-X Autonomous Decision Brain")
 
-# CORS (cloud + firebase safe)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,135 +35,137 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Core brain modules
+# -----------------------
+# Brain Modules
+# -----------------------
 chrono = ChronoSense(threshold_seconds=5)
 signal_score = SignalScore()
 rule_engine = RuleWeave()
 priority_engine = PriorityFlux()
 auto_trigger = AutoTrigger()
 
-# Intelligence layers
 drift_guard = DriftGuard(window_size=5)
 confidence_gate = ConfidenceGate(min_confidence=0.7)
 
-# 🔹 GLOBAL LIVE STATE (for dashboard polling)
+# -----------------------
+# GLOBAL STATE
+# -----------------------
 LATEST_STATE = {}
 
-
+# -----------------------
+# Models
+# -----------------------
 class InputData(BaseModel):
     cpu_usage: int
 
 
 @app.get("/")
-def health_check():
-    return {
-        "status": "AutoPilot-X running",
-        "mode": "Live / Offline / Cloud-ready"
-    }
+def health():
+    return {"status": "AutoPilot-X running"}
 
 
-# 🔹 Manual UI simulation
 @app.post("/simulate")
 def simulate(data: InputData):
-    return process_signal(data.cpu_usage, source="UI")
+    return process_signal(data.cpu_usage, source="manual")
 
 
-# 🔹 Real-time telemetry ingestion (agents, laptops, cloud)
 @app.post("/ingest")
 def ingest(data: InputData):
-    return process_signal(data.cpu_usage, source="Telemetry")
+    return process_signal(data.cpu_usage, source="telemetry")
 
 
-# 🔹 Dashboard polling endpoint
 @app.get("/latest")
-def latest_state():
+def latest():
     return LATEST_STATE
 
 
-# 🔹 Shared decision pipeline
+# -----------------------
+# CORE DECISION PIPELINE
+# -----------------------
 def process_signal(cpu: int, source: str):
     global LATEST_STATE
 
-    print(f"[{source}] CPU signal received: {cpu}%")
+    # 1. Normalize
+    inference_score = round(cpu / 100, 3)
 
-    # 1. Time persistence
-    time_valid = chrono.evaluate(cpu > 80)
+    # 2. Time persistence
+    persistence = chrono.evaluate(cpu > 80)
 
-    # 2. Signal scoring
+    # 3. Signal scoring
     score_data = signal_score.calculate(
         severity=cpu,
         frequency=2,
         duration=3
     )
-    score_value = score_data["score"]
 
-    # 3. Drift detection
+    # 4. Drift detection
     drift_data = drift_guard.update(cpu)
 
-    # 4. Rule evaluation
-    decision_data = rule_engine.decide(score_value, time_valid)
+    # 5. Rule evaluation
+    rule_data = rule_engine.decide(inference_score, persistence)
 
-    # 5. Confidence gating
+    # 6. Confidence gating
     confidence_data = confidence_gate.evaluate(
-        score=score_value,
-        persistence=time_valid
+        score=inference_score,
+        persistence=persistence
     )
 
-    # 6. Decision resolution
-    if decision_data["decision"] and confidence_data["allowed"]:
-        actions = [
-            {"name": "Send Alert", "priority": 3},
-            {"name": "Scale Resources", "priority": 5}
-        ]
+    # -----------------------
+    # Decision Resolution
+    # -----------------------
+    explainability = []
 
-        chosen = priority_engine.resolve(actions)
-        action_result = auto_trigger.execute(chosen["name"])
+    if inference_score >= 0.75:
+        status = "CRITICAL"
+        decision = "AUTO_MITIGATE"
+        explainability.append("CPU exceeds critical threshold (75%)")
+    elif inference_score >= 0.55:
+        status = "WARNING"
+        decision = "THROTTLE"
+        explainability.append("CPU exceeds warning threshold (55%)")
+    else:
+        status = "STABLE"
+        decision = "NO_ACTION"
+        explainability.append("CPU within safe operating range")
 
-        log = generate_log(
-            f"[{source}] CPU={cpu}% | Score={score_value} | Drift={drift_data.get('drift_detected')} | Confidence={confidence_data['confidence']}"
-        )
+    explainability.append(f"Observed CPU load: {cpu}%")
+    explainability.append(f"Confidence score: {confidence_data['confidence']}")
+    explainability.append(f"Drift detected: {drift_data.get('drift_detected')}")
 
-        if FIREBASE_ENABLED:
-            save_log(log)
+    # Optional auto-trigger
+    action_result = None
+    if decision != "NO_ACTION" and confidence_data["allowed"]:
+        action_result = auto_trigger.execute(decision)
+        explainability.append(f"Action executed: {decision}")
 
-        response = {
-            "status": "TRIGGERED",
-            "source": source,
-            "decision": chosen["name"],
-            "confidence": confidence_data,
-            "drift_analysis": drift_data,
-            "score": score_value,
-            "signal_analysis": score_data,
-            "rule_analysis": decision_data,
-            "action": action_result,
-            "log": log
-        }
+    log = generate_log(
+        f"[{source}] CPU={cpu}% | Score={inference_score} | Status={status}"
+    )
 
-        LATEST_STATE = response
-        return response
+    if FIREBASE_ENABLED:
+        save_log(log)
 
-    # Monitoring state
     response = {
-        "status": "MONITORING",
+        "agent_id": "XP-990-ALPHA",
+        "timestamp": datetime.utcnow().isoformat(),
         "source": source,
-        "cpu": cpu,
-        "confidence": confidence_data,
-        "drift_analysis": drift_data,
-        "score": score_value,
-        "signal_analysis": score_data,
-        "rule_analysis": decision_data
+        "cpu_raw": cpu,
+        "inference_score": inference_score,
+        "status": status,
+        "decision": decision,
+        "confidence": confidence_data["confidence"],
+        "drift": drift_data,
+        "explainability": explainability
     }
 
     LATEST_STATE = response
     return response
 
 
-# ✅ CLOUD-SAFE ENTRYPOINT
+# -----------------------
+# ENTRYPOINT
+# -----------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     print(f"[Main] Launching AutoPilot-X on port {port}")
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=port
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
