@@ -1,65 +1,14 @@
 # AutoPilot-X
 
-## Overview
+AutoPilot-X is a **real-time autonomous decision engine** that monitors live system signals and makes **safe, explainable decisions** using deterministic logic — not black-box AI.
 
-AutoPilot-X is an **autonomous, explainable decision logic engine** that converts real-time system signals into **safe, deterministic actions** without using black-box LLMs.
+It continuously observes metrics (like CPU usage), evaluates risk over time, verifies confidence, and decides whether to act or stay idle. Every decision is explained in plain language and visible on a live dashboard.
 
----
+The system supports real telemetry from a laptop, manual simulation for testing, drift detection, confidence gating, and controlled autonomous actions. It avoids false triggers and automatically stabilizes when conditions return to normal.
 
-## What Problem It Solves
+AutoPilot-X is designed for **cloud operations, infrastructure monitoring, and safety-critical systems** where transparency and control are required.
 
-Modern systems generate continuous alerts, but decisions are still manual or unsafe automation.
-AutoPilot-X decides **when to act, what to do, and why**, in real time.
+**Key idea:** it doesn’t generate responses — it makes decisions and explains them.
 
----
-
-## How It Works (Core Flow)
-
-```
-Signal Input (CPU, metrics)
-   ↓
-ChronoSense   → time & persistence validation
-SignalScore   → risk quantification
-RuleWeave     → decision logic
-PriorityFlux  → action selection
-AutoTrigger   → controlled execution
-ExplainLog    → decision explanation
-```
-
----
-
-## Demo (Current MVP)
-
-* Simulated CPU signal via FastAPI
-* System monitors first (no false trigger)
-* On persistence, action is triggered
-* Full explainability returned in response
-
----
-
-## Real-Time Use Cases
-
-* Cloud & DevOps automation (auto-scaling, alerts)
-* Infrastructure & IoT monitoring
-* FinTech risk decisioning
-* Safety-critical operational systems
-
----
-
-## Tech Stack
-
-* Python, FastAPI
-* Modular decision engine (rule-based)
-* Firebase (optional logging)
-
----
-
-## Key Differentiator
-
-**AutoPilot-X does not generate responses — it makes decisions and explains them.**
-
----
-
-## Team
-
-NeuroWeave — Dimension X Hackathon
+**Status:** MVP (active development)  
+**Team:** NeuroWeave — Dimension X Hackathon
